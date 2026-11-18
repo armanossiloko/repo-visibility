@@ -28,11 +28,11 @@ jobs:
       # Uses the Trusted Publishing policy on the armanossiloko publisher
       # (repository armanossiloko/repo-visibility, workflow release.yml).
       - name: Publish to the Visual Studio Marketplace
-        run: npx vsce publish --oidc --packagePath repo-visibility.vsix
+        run: npx vsce publish --oidc --skip-duplicate --packagePath repo-visibility.vsix
 
       # Uses the trusted publisher registered on open-vsx.org for the armanossiloko namespace.
       - name: Publish to Open VSX
-        run: npx ovsx publish repo-visibility.vsix --trusted-publishing
+        run: npx ovsx publish repo-visibility.vsix --trusted-publishing --skip-duplicate
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')

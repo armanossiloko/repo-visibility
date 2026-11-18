@@ -3,6 +3,17 @@
 All notable changes to Repo Visibility are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-18
+
+### Fixed
+
+- Repositories listed in `git.ignoredRepositories` (where some other "hide repository" tools put them) could not be
+  shown. Checking one now removes it from that setting, in the user or workspace settings, and opens it.
+
+### Added
+
+- Everything in `git.ignoredRepositories` is listed (unchecked), even beyond `repoVisibility.scanDepth`.
+
 ## [0.3.0] - 2026-11-18
 
 ### Changed
@@ -40,6 +51,7 @@ All notable changes to Repo Visibility are documented here. The format follows
 - Hidden repositories are remembered per workspace and stay hidden after a reload.
 - Repositories closed with Git's own Close Repository action are listed as hidden.
 
+[0.4.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.4.0
 [0.3.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.3.0
 [0.2.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.2.0
 [0.1.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.1.0

@@ -54,6 +54,7 @@ VS Code has no API for filtering the Source Control view, so Repo Visibility use
 - A hidden repository is not watched by Git, so it gets no Git decorations in the Explorer and no status bar branch while it is hidden. Show it again whenever you need them.
 - Your files are never touched. Hiding and showing only changes what Git tracks in the current window.
 - Repositories found on disk that Git has not opened are listed unchecked; checking one opens it in Git.
+- Repositories in `git.ignoredRepositories` are listed unchecked too. Git never opens those, so checking one removes it from that setting (user or workspace settings) before opening it.
 - The hidden and shown choices are stored in the workspace's state, so each workspace has its own.
 
 ## Requirements

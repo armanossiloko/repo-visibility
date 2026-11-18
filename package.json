@@ -1,0 +1,282 @@
+{
+  "name": "repo-visibility",
+  "displayName": "Repo Visibility",
+  "description": "Hide and show Git repositories in the Source Control view with one click. Made for workspaces with many repositories and submodules.",
+  "version": "0.1.0",
+  "publisher": "armanossiloko",
+  "author": {
+    "name": "armanossiloko"
+  },
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1e2a3a",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/armanossiloko/repo-visibility.git"
+  },
+  "homepage": "https://github.com/armanossiloko/repo-visibility#readme",
+  "bugs": {
+    "url": "https://github.com/armanossiloko/repo-visibility/issues"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "scm",
+    "source control",
+    "repositories",
+    "multi-root",
+    "monorepo",
+    "submodules",
+    "hide",
+    "filter"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": false
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "views": {
+      "scm": [
+        {
+          "id": "repoVisibility.repositories",
+          "name": "Repo Visibility",
+          "icon": "$(eye)",
+          "contextualTitle": "Repo Visibility"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "repoVisibility.repositories",
+        "contents": "The built-in Git extension is disabled or not available, so there are no repositories to show.\n[Open Git Settings](command:workbench.action.openSettings?%22git.enabled%22)",
+        "when": "repoVisibility.gitState == unavailable"
+      },
+      {
+        "view": "repoVisibility.repositories",
+        "contents": "No Git repositories were found in this workspace.",
+        "when": "repoVisibility.gitState == ready"
+      }
+    ],
+    "commands": [
+      {
+        "command": "repoVisibility.showAll",
+        "title": "Show All Repositories",
+        "category": "Repo Visibility",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "repoVisibility.hideAll",
+        "title": "Hide All Repositories",
+        "category": "Repo Visibility",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "repoVisibility.pick",
+        "title": "Choose Visible Repositories...",
+        "category": "Repo Visibility",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "repoVisibility.viewAsList",
+        "title": "View as List",
+        "category": "Repo Visibility",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "repoVisibility.viewAsTree",
+        "title": "View as Tree",
+        "category": "Repo Visibility",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "repoVisibility.refresh",
+        "title": "Refresh",
+        "category": "Repo Visibility",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "repoVisibility.show",
+        "title": "Show Repository",
+        "category": "Repo Visibility",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "repoVisibility.hide",
+        "title": "Hide Repository",
+        "category": "Repo Visibility",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "repoVisibility.showOnly",
+        "title": "Show Only This Repository",
+        "category": "Repo Visibility"
+      },
+      {
+        "command": "repoVisibility.revealInOS",
+        "title": "Reveal in File Explorer",
+        "category": "Repo Visibility"
+      },
+      {
+        "command": "repoVisibility.forget",
+        "title": "Forget Repository",
+        "category": "Repo Visibility"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "repoVisibility.showAll",
+          "when": "view == repoVisibility.repositories",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repoVisibility.hideAll",
+          "when": "view == repoVisibility.repositories",
+          "group": "navigation@2"
+        },
+        {
+          "command": "repoVisibility.viewAsList",
+          "when": "view == repoVisibility.repositories && repoVisibility.viewMode == tree",
+          "group": "navigation@3"
+        },
+        {
+          "command": "repoVisibility.viewAsTree",
+          "when": "view == repoVisibility.repositories && repoVisibility.viewMode == list",
+          "group": "navigation@3"
+        },
+        {
+          "command": "repoVisibility.refresh",
+          "when": "view == repoVisibility.repositories",
+          "group": "navigation@4"
+        },
+        {
+          "command": "repoVisibility.pick",
+          "when": "view == repoVisibility.repositories",
+          "group": "1_pick"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "repoVisibility.hide",
+          "when": "view == repoVisibility.repositories && viewItem == repoVisibility.visible",
+          "group": "1_visibility@1"
+        },
+        {
+          "command": "repoVisibility.show",
+          "when": "view == repoVisibility.repositories && viewItem == repoVisibility.hidden",
+          "group": "1_visibility@1"
+        },
+        {
+          "command": "repoVisibility.showOnly",
+          "when": "view == repoVisibility.repositories",
+          "group": "1_visibility@2"
+        },
+        {
+          "command": "repoVisibility.revealInOS",
+          "when": "view == repoVisibility.repositories",
+          "group": "2_reveal@1"
+        },
+        {
+          "command": "repoVisibility.forget",
+          "when": "view == repoVisibility.repositories && viewItem == repoVisibility.hidden",
+          "group": "3_forget@1"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "repoVisibility.pick",
+          "group": "repoVisibility@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "repoVisibility.viewAsList",
+          "when": "repoVisibility.viewMode == tree"
+        },
+        {
+          "command": "repoVisibility.viewAsTree",
+          "when": "repoVisibility.viewMode == list"
+        },
+        {
+          "command": "repoVisibility.show",
+          "when": "false"
+        },
+        {
+          "command": "repoVisibility.hide",
+          "when": "false"
+        },
+        {
+          "command": "repoVisibility.showOnly",
+          "when": "false"
+        },
+        {
+          "command": "repoVisibility.revealInOS",
+          "when": "false"
+        },
+        {
+          "command": "repoVisibility.forget",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Repo Visibility",
+      "properties": {
+        "repoVisibility.viewMode": {
+          "type": "string",
+          "enum": [
+            "tree",
+            "list"
+          ],
+          "enumDescriptions": [
+            "Nest submodules and nested repositories under the repository that contains them.",
+            "Show every repository on its own row, sorted by name."
+          ],
+          "default": "tree",
+          "description": "How the Repo Visibility view lays out repositories."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "test": "npm run compile && node --test out/test/",
+    "test:integration": "npm run compile && node out/test/runIntegration.js",
+    "vscode:prepublish": "npm run clean && npm run compile",
+    "package": "vsce package",
+    "publish:vscode": "vsce publish",
+    "publish:openvsx": "ovsx publish",
+    "publish": "npm run publish:vscode && npm run publish:openvsx"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "1.80.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.1",
+    "ovsx": "^1.4.0",
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.1.1": true
+  }
+}

@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # create the GitHub release
+  id-token: write   # Marketplace Trusted Publishing (OIDC), no token needed
 
 jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      # Publishing to a store is skipped when its token secret is not set.
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      # Open VSX has no trusted publishing; that step is skipped when the secret is not set.
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v7
@@ -28,9 +28,10 @@ jobs:
       - name: Package
         run: npm run package -- --out repo-visibility.vsix
 
+      # Uses the Trusted Publishing policy on the armanossiloko publisher
+      # (repository armanossiloko/repo-visibility, workflow release.yml).
       - name: Publish to the Visual Studio Marketplace
-        if: env.VSCE_PAT != ''
-        run: npx vsce publish --packagePath repo-visibility.vsix
+        run: npx vsce publish --oidc --packagePath repo-visibility.vsix
 
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''

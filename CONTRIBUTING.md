@@ -48,13 +48,26 @@ The extension is published to both stores under the publisher / namespace `arman
 
 1. **Marketplace publisher.** Sign in at https://marketplace.visualstudio.com/manage and create a publisher with the ID
    `armanossiloko` (it must match `publisher` in `package.json`).
-2. **Marketplace token.** In Azure DevOps (https://dev.azure.com), create a Personal Access Token with
-   *Organization: All accessible organizations* and the scope *Marketplace > Manage*.
-3. **Open VSX token.** Sign in at https://open-vsx.org with GitHub, sign the publisher agreement, and create an access
-   token under *Settings > Access Tokens*. Then create the namespace once:
-   `npx ovsx create-namespace armanossiloko -p <OVSX_PAT>`.
+2. **Marketplace Trusted Publishing.** On the publisher page open **Trusted Publishing**, expand **Create** and enter:
+
+   | Field | Value |
+   | --- | --- |
+   | Policy name | `Release workflow` |
+   | Repository owner | `armanossiloko` |
+   | Repository | `repo-visibility` |
+   | Workflow | `release.yml` |
+   | Environment | *(leave empty)* |
+
+   GitHub Actions then publishes with `vsce publish --oidc`; no Marketplace token is stored anywhere.
+3. **Open VSX (optional, for VSCodium and other Open VSX editors).** Sign in at https://open-vsx.org with GitHub, sign
+   the publisher agreement, and create an access token under *Settings > Access Tokens*. Create the namespace once with
+   `npx ovsx create-namespace armanossiloko -p <token>`, then add the token as the repository secret `OVSX_PAT`
+   (*Settings > Secrets and variables > Actions*).
 
 ### Publish from your machine
+
+Trusted Publishing only works inside GitHub Actions. To publish locally instead, use an Azure DevOps personal access
+token with the scope *Marketplace > Manage* (organization: *All accessible organizations*):
 
 ```sh
 # PowerShell: $env:VSCE_PAT = "..."; $env:OVSX_PAT = "..."
@@ -65,16 +78,16 @@ npm run publish       # both stores; or publish:vscode / publish:openvsx
 
 ### Publish from GitHub (recommended)
 
-Add the two tokens as repository secrets named `VSCE_PAT` and `OVSX_PAT`
-(*Settings > Secrets and variables > Actions*). Then bump the version, update `CHANGELOG.md`, and push a tag:
+With the Trusted Publishing policy in place (and optionally `OVSX_PAT`), bump the version, update `CHANGELOG.md`, and
+push a tag:
 
 ```sh
 npm version patch     # or minor / major: updates package.json and creates the v* tag
 git push --follow-tags
 ```
 
-The **Release** workflow builds and tests the extension, publishes it to every store that has a token configured, and
-attaches the `.vsix` to a GitHub release.
+The **Release** workflow builds and tests the extension, publishes it to the Marketplace (and to Open VSX when
+`OVSX_PAT` is set), and attaches the `.vsix` to a GitHub release.
 
 ## Commit messages
 

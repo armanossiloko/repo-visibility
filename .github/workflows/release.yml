@@ -7,14 +7,11 @@ on:
 
 permissions:
   contents: write   # create the GitHub release
-  id-token: write   # Marketplace Trusted Publishing (OIDC), no token needed
+  id-token: write   # Trusted Publishing (OIDC) to both stores, no tokens needed
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      # Open VSX has no trusted publishing; that step is skipped when the secret is not set.
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -33,9 +30,9 @@ jobs:
       - name: Publish to the Visual Studio Marketplace
         run: npx vsce publish --oidc --packagePath repo-visibility.vsix
 
+      # Uses the trusted publisher registered on open-vsx.org for the armanossiloko namespace.
       - name: Publish to Open VSX
-        if: env.OVSX_PAT != ''
-        run: npx ovsx publish repo-visibility.vsix
+        run: npx ovsx publish repo-visibility.vsix --trusted-publishing
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')

@@ -59,10 +59,13 @@ The extension is published to both stores under the publisher / namespace `arman
    | Environment | *(leave empty)* |
 
    GitHub Actions then publishes with `vsce publish --oidc`; no Marketplace token is stored anywhere.
-3. **Open VSX (optional, for VSCodium and other Open VSX editors).** Sign in at https://open-vsx.org with GitHub, sign
-   the publisher agreement, and create an access token under *Settings > Access Tokens*. Create the namespace once with
-   `npx ovsx create-namespace armanossiloko -p <token>`, then add the token as the repository secret `OVSX_PAT`
-   (*Settings > Secrets and variables > Actions*).
+3. **Open VSX namespace.** Sign in at https://open-vsx.org with GitHub, sign the Eclipse Foundation publisher
+   agreement (your profile page prompts for it), and create the namespace `armanossiloko` under
+   *Settings > Namespaces* (or with `npx ovsx create-namespace armanossiloko -p <token>`).
+4. **Open VSX trusted publisher.** Under *Settings > Trusted Publishers*
+   (https://open-vsx.org/user-settings/trusted-publishers) register GitHub Actions for the namespace `armanossiloko`
+   with owner `armanossiloko`, repository `repo-visibility`, workflow `release.yml` and no environment. The workflow
+   then publishes with `ovsx publish --trusted-publishing`; no Open VSX token is stored anywhere.
 
 ### Publish from your machine
 
@@ -78,16 +81,14 @@ npm run publish       # both stores; or publish:vscode / publish:openvsx
 
 ### Publish from GitHub (recommended)
 
-With the Trusted Publishing policy in place (and optionally `OVSX_PAT`), bump the version, update `CHANGELOG.md`, and
-push a tag:
+With both trusted publishers in place, bump the version, update `CHANGELOG.md`, and push a tag:
 
 ```sh
 npm version patch     # or minor / major: updates package.json and creates the v* tag
 git push --follow-tags
 ```
 
-The **Release** workflow builds and tests the extension, publishes it to the Marketplace (and to Open VSX when
-`OVSX_PAT` is set), and attaches the `.vsix` to a GitHub release.
+The **Release** workflow builds and tests the extension, publishes it to the Marketplace and Open VSX, and attaches the `.vsix` to a GitHub release.
 
 ## Commit messages
 

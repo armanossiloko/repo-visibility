@@ -10,8 +10,10 @@ import { pathKey } from '../../paths';
 
 /** Opened by Git itself. */
 const GIT_OPENS = ['alpha', 'beta', 'core', 'gamma', 'inner'];
-/** Everything in the workspace, including `deep`, which only the extension's disk scan finds. */
-const NAMES = [...GIT_OPENS, 'deep'];
+/** Found only by the extension: too deep for Git's scan, or listed in git.ignoredRepositories. */
+const GIT_SKIPS = ['deep', 'skipped', 'skippedUser'];
+/** Everything in the workspace that can be opened. */
+const NAMES = [...GIT_OPENS, ...GIT_SKIPS];
 
 let describeState: () => string = () => '';
 
@@ -53,8 +55,8 @@ listed: ${JSON.stringify(listed())}`;
   const all = (visible: boolean) => ({ ...Object.fromEntries(NAMES.map((n) => [n, visible])), broken: false });
 
   await waitFor('Git opens its repositories', () => openNames().join() === [...GIT_OPENS].sort().join());
-  await step('the disk scan lists the repository Git did not open', () => vscode.commands.executeCommand('repoVisibility.refresh'),
-    GIT_OPENS, { ...all(true), deep: false });
+  await step('the disk scan lists the repositories Git did not open', () => vscode.commands.executeCommand('repoVisibility.refresh'),
+    GIT_OPENS, { ...all(true), ...Object.fromEntries(GIT_SKIPS.map((n) => [n, false])) });
 
   const kinds = Object.fromEntries(api.getRepositories().map((r) => [path.basename(r.root), r.kind]));
   assert.deepEqual(
@@ -69,8 +71,12 @@ listed: ${JSON.stringify(listed())}`;
   assert.match(broken.problem ?? '', /rev-parse failed: fatal: /, `problem was: ${broken.problem}`);
   console.log(`ok - a repository Git cannot open says why: ${broken.problem}`);
 
-  await step('show the repository Git did not open', () => vscode.commands.executeCommand('repoVisibility.show', node('deep')),
+  await step('show the repositories Git did not open', () =>
+    vscode.commands.executeCommand('repoVisibility.show', node('deep'), GIT_SKIPS.map(node)),
     NAMES, all(true));
+  const ignored = vscode.workspace.getConfiguration('git').inspect<string[]>('ignoredRepositories');
+  assert.equal(ignored?.globalValue, undefined, 'both entries were removed from the user settings');
+  console.log('ok - showing a repository removes it from git.ignoredRepositories');
 
   await step('hide one', () => vscode.commands.executeCommand('repoVisibility.hide', node('beta')),
     NAMES.filter((n) => n !== 'beta'), { ...all(true), beta: false });

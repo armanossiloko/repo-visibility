@@ -33,7 +33,9 @@ async function main(): Promise<void> {
   // submodule libs/core itself. group/sub/deep is too deep for Git, so only the extension's scan finds it.
   const coreSource = path.join(temp, 'core-source');
   commitReadme(coreSource);
-  for (const repo of ['alpha', 'beta', 'gamma', path.join('beta', 'inner'), path.join('group', 'sub', 'deep')]) {
+  // skipped (relative entry) and skippedUser (absolute entry) are in git.ignoredRepositories, so Git never opens them.
+  const repos = ['alpha', 'beta', 'gamma', path.join('beta', 'inner'), path.join('group', 'sub', 'deep'), 'skipped', 'skippedUser'];
+  for (const repo of repos) {
     commitReadme(path.join(workspace, repo));
   }
   git(path.join(workspace, 'alpha'), 'submodule', 'add', '-q', coreSource, 'libs/core');
@@ -45,7 +47,17 @@ async function main(): Promise<void> {
   fs.mkdirSync(path.join(workspace, '.vscode'));
   fs.writeFileSync(
     path.join(workspace, '.vscode', 'settings.json'),
-    JSON.stringify({ 'git.repositoryScanMaxDepth': 2, 'git.autoRepositoryDetection': true }, null, 2),
+    JSON.stringify(
+      { 'git.repositoryScanMaxDepth': 2, 'git.autoRepositoryDetection': true },
+      null,
+      2,
+    ),
+  );
+  fs.mkdirSync(path.join(temp, 'user-data', 'User'), { recursive: true });
+  fs.writeFileSync(
+    path.join(temp, 'user-data', 'User', 'settings.json'),
+    // A workspace value would replace this one rather than add to it, so both entries live here.
+    JSON.stringify({ 'git.ignoredRepositories': ['skipped', path.join(workspace, 'skippedUser')] }, null, 2),
   );
 
   const root = path.resolve(__dirname, '..', '..');

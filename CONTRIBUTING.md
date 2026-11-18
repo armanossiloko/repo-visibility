@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 22 or later (required by `@vscode/vsce` and `ovsx`)
+- Node.js 22 or later (required by `@vscode/vsce`)
 - Git
 
 ## Develop
@@ -39,56 +39,36 @@ This compiles the extension and writes `repo-visibility-<version>.vsix`. Install
 
 ## Publish
 
-The extension is published to both stores under the publisher / namespace `armanossiloko`:
+The extension is published to the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=armanossiloko.repo-visibility)
+under the publisher `armanossiloko`.
 
-- **Visual Studio Marketplace** (VS Code): https://marketplace.visualstudio.com/manage
-- **Open VSX** (VSCodium, Cursor, Gitpod and others): https://open-vsx.org
+### Publish from GitHub (the normal way)
 
-### One-time setup
-
-1. **Marketplace publisher.** Sign in at https://marketplace.visualstudio.com/manage and create a publisher with the ID
-   `armanossiloko` (it must match `publisher` in `package.json`).
-2. **Marketplace Trusted Publishing.** On the publisher page open **Trusted Publishing**, expand **Create** and enter:
-
-   | Field | Value |
-   | --- | --- |
-   | Policy name | `Release workflow` |
-   | Repository owner | `armanossiloko` |
-   | Repository | `repo-visibility` |
-   | Workflow | `release.yml` |
-   | Environment | *(leave empty)* |
-
-   GitHub Actions then publishes with `vsce publish --oidc`; no Marketplace token is stored anywhere.
-3. **Open VSX namespace.** Sign in at https://open-vsx.org with GitHub, sign the Eclipse Foundation publisher
-   agreement (your profile page prompts for it), and create the namespace `armanossiloko` under
-   *Settings > Namespaces* (or with `npx ovsx create-namespace armanossiloko -p <token>`).
-4. **Open VSX trusted publisher.** Under *Settings > Trusted Publishers*
-   (https://open-vsx.org/user-settings/trusted-publishers) register GitHub Actions for the namespace `armanossiloko`
-   with owner `armanossiloko`, repository `repo-visibility`, workflow `release.yml` and no environment. The workflow
-   then publishes with `ovsx publish --trusted-publishing`; no Open VSX token is stored anywhere.
-
-### Publish from your machine
-
-Trusted Publishing only works inside GitHub Actions. To publish locally instead, use an Azure DevOps personal access
-token with the scope *Marketplace > Manage* (organization: *All accessible organizations*):
-
-```sh
-# PowerShell: $env:VSCE_PAT = "..."; $env:OVSX_PAT = "..."
-export VSCE_PAT=...   # Marketplace token
-export OVSX_PAT=...   # Open VSX token
-npm run publish       # both stores; or publish:vscode / publish:openvsx
-```
-
-### Publish from GitHub (recommended)
-
-With both trusted publishers in place, bump the version, update `CHANGELOG.md`, and push a tag:
+The **Release** workflow publishes with Marketplace Trusted Publishing (`vsce publish --oidc`), so no token is stored
+anywhere. Bump the version, update `CHANGELOG.md`, and push a tag:
 
 ```sh
 npm version patch     # or minor / major: updates package.json and creates the v* tag
 git push --follow-tags
 ```
 
-The **Release** workflow builds and tests the extension, publishes it to the Marketplace and Open VSX, and attaches the `.vsix` to a GitHub release.
+The workflow builds and tests the extension, publishes it to the Marketplace, and attaches the `.vsix` to a GitHub
+release. Re-running it is safe: a version that is already published is skipped.
+
+The Trusted Publishing policy lives on the publisher page (https://marketplace.visualstudio.com/manage, publisher
+`armanossiloko` > **Trusted Publishing**): owner `armanossiloko`, repository `repo-visibility`, workflow `release.yml`,
+no environment. If the workflow file is renamed, update the policy too.
+
+### Publish from your machine
+
+Trusted Publishing only works inside GitHub Actions. To publish locally, create an Azure DevOps personal access token
+with the scope *Marketplace > Manage* (organization: *All accessible organizations*) and run:
+
+```sh
+# PowerShell: $env:VSCE_PAT = "..."
+export VSCE_PAT=...
+npm run publish
+```
 
 ## Commit messages
 

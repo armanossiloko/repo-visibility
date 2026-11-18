@@ -86,7 +86,9 @@ export class RepoTreeProvider implements vscode.TreeDataProvider<RepoNode>, vsco
       tooltip: repo.visible ? 'Shown in Source Control. Uncheck to hide.' : 'Not shown in Source Control. Check to show.',
     };
     item.contextValue = repo.visible ? 'repoVisibility.visible' : 'repoVisibility.hidden';
-    item.iconPath = new vscode.ThemeIcon(KIND_ICONS[repo.kind]);
+    item.iconPath = repo.problem
+      ? new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'))
+      : new vscode.ThemeIcon(KIND_ICONS[repo.kind]);
     item.tooltip = this.tooltip(repo);
     return item;
   }
@@ -141,6 +143,8 @@ export class RepoTreeProvider implements vscode.TreeDataProvider<RepoNode>, vsco
       }
       md.appendMarkdown(`${changes} ${changes === 1 ? 'change' : 'changes'}  \n`);
       md.appendMarkdown('$(eye) Shown in Source Control');
+    } else if (repo.problem) {
+      md.appendMarkdown(`$(warning) Git could not open it: ${escapeMarkdown(repo.problem)}`);
     } else {
       md.appendMarkdown('$(eye-closed) Not shown in Source Control');
     }

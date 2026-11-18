@@ -10,7 +10,12 @@ const VIEW_ID = 'repoVisibility.repositories';
 /** What the extension exports to other extensions (used by the integration tests). */
 export interface ExtensionApi {
   /** Every repository the view lists, with whether it is shown in Source Control. */
-  getRepositories(): { root: string; visible: boolean; kind: 'repository' | 'submodule' | 'worktree' }[];
+  getRepositories(): {
+    root: string;
+    visible: boolean;
+    kind: 'repository' | 'submodule' | 'worktree';
+    problem: string | undefined;
+  }[];
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<ExtensionApi> {
@@ -90,7 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   await controller.initialize();
 
   return {
-    getRepositories: () => controller.getRepositories().map(({ root, visible, kind }) => ({ root, visible, kind })),
+    getRepositories: () => controller.getRepositories().map(({ root, visible, kind, problem }) => ({ root, visible, kind, problem })),
   };
 }
 

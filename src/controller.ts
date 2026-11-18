@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { diagnoseOpenFailure, OpenProblem } from './diagnose';
 import { DiscoveredRepo, findRepositories, RepoKind } from './discovery';
 import type { API, GitExtension, Repository } from './git';
 import { isRelated, pathKey } from './paths';
@@ -21,6 +22,8 @@ export interface RepoInfo {
   readonly kind: RepoKind;
   /** Set while the repository is open (visible). */
   readonly repository: Repository | undefined;
+  /** Why Git refused to open it the last time it was shown. */
+  readonly problem: string | undefined;
 }
 
 /**
@@ -43,6 +46,8 @@ export class VisibilityController implements vscode.Disposable {
   private readonly shown: Map<string, string>;
   /** Repositories found on disk in the workspace folders, by key. */
   private discovered = new Map<string, DiscoveredRepo>();
+  /** Repositories Git refused to open, with the reason. */
+  private readonly problems = new Map<string, OpenProblem>();
   private api: API | undefined;
   private _state: GitState = 'loading';
   private queue: Promise<unknown> = Promise.resolve();
@@ -107,12 +112,20 @@ export class VisibilityController implements vscode.Disposable {
     for (const repository of this.api.repositories) {
       const root = repository.rootUri.fsPath;
       const key = pathKey(root);
-      result.set(key, { key, root, name: path.basename(root) || root, visible: true, kind: kindOf(key), repository });
+      result.set(key, { key, root, name: path.basename(root) || root, visible: true, kind: kindOf(key), repository, problem: undefined });
     }
     const folderKeys = (vscode.workspace.workspaceFolders ?? []).map((f) => pathKey(f.uri.fsPath));
     const addClosed = (key: string, root: string): void => {
       if (!result.has(key)) {
-        result.set(key, { key, root, name: path.basename(root) || root, visible: false, kind: kindOf(key), repository: undefined });
+        result.set(key, {
+          key,
+          root,
+          name: path.basename(root) || root,
+          visible: false,
+          kind: kindOf(key),
+          repository: undefined,
+          problem: this.problems.get(key)?.reason,
+        });
       }
     };
     for (const [key, repo] of this.discovered) {
@@ -137,13 +150,20 @@ export class VisibilityController implements vscode.Disposable {
           await this.hideRepository(repo);
         }
       }
+      const failed: { repo: RepoInfo; problem: OpenProblem }[] = [];
       for (const key of show) {
         const repo = repos.get(key);
         if (repo && !repo.visible) {
-          await this.showRepository(repo);
+          const problem = await this.showRepository(repo);
+          if (problem) {
+            failed.push({ repo, problem });
+          }
         }
       }
       this.changeEmitter.fire();
+      if (failed.length > 0) {
+        void this.reportFailures(failed);
+      }
     });
   }
 
@@ -256,7 +276,11 @@ export class VisibilityController implements vscode.Disposable {
     for (const [key, root] of [...this.shown]) {
       if (!openKeys.has(key) && !this.hidden.has(key) && (await isGitRepository(root))) {
         this.log.info(`Showing ${root} again after start-up.`);
-        await this.openInGit(root);
+        if (!(await this.openInGit(root))) {
+          const problem = await diagnoseOpenFailure(root, api.git?.path);
+          this.problems.set(key, problem);
+          this.log.warn(`Git could not open ${root}: ${problem.reason}`);
+        }
       }
     }
 
@@ -271,6 +295,7 @@ export class VisibilityController implements vscode.Disposable {
   private onDidOpenRepository(repository: Repository): void {
     // Opened by someone else (for example Git: Reopen Closed Repositories): it is visible now.
     const key = pathKey(repository.rootUri.fsPath);
+    this.problems.delete(key);
     if (this.hidden.delete(key)) {
       void this.save();
     }
@@ -308,32 +333,53 @@ export class VisibilityController implements vscode.Disposable {
     }
   }
 
-  private async showRepository(repo: RepoInfo): Promise<void> {
+  /** Opens a repository in Git. Returns why it could not be opened, or undefined when it was. */
+  private async showRepository(repo: RepoInfo): Promise<OpenProblem | undefined> {
     if (!this.api) {
-      return;
+      return undefined;
     }
     this.log.info(`Showing ${repo.root}`);
-    this.hidden.delete(repo.key);
+    const wasHidden = this.hidden.delete(repo.key);
     this.shown.set(repo.key, repo.root);
     await this.save();
 
     if (await this.openInGit(repo.root)) {
-      return;
+      this.problems.delete(repo.key);
+      return undefined;
     }
 
     this.shown.delete(repo.key);
-    if (await isGitRepository(repo.root)) {
-      this.hidden.set(repo.key, repo.root);
-      void vscode.window.showWarningMessage(
-        `Repo Visibility: Git could not open ${repo.name}. Check the Git output for details.`,
-      );
-    } else {
+    if (!(await isGitRepository(repo.root))) {
       this.discovered.delete(repo.key);
-      void vscode.window.showInformationMessage(
-        `Repo Visibility: ${repo.name} is no longer a Git repository, so it was removed from the list.`,
-      );
+      await this.save();
+      return { reason: 'It is no longer a Git repository, so it was removed from the list.', unsafe: false };
+    }
+    // Keep listing it: the disk scan lists it anyway, otherwise it goes back to the hidden list.
+    if (wasHidden || !this.discovered.has(repo.key)) {
+      this.hidden.set(repo.key, repo.root);
     }
     await this.save();
+    const problem = await diagnoseOpenFailure(repo.root, this.api.git?.path);
+    this.problems.set(repo.key, problem);
+    this.log.warn(`Git could not open ${repo.root}: ${problem.reason}`);
+    return problem;
+  }
+
+  private async reportFailures(failed: { repo: RepoInfo; problem: OpenProblem }[]): Promise<void> {
+    const unsafe = failed.some((f) => f.problem.unsafe);
+    const message =
+      failed.length === 1
+        ? `Repo Visibility: Git could not open ${failed[0].repo.name}. ${failed[0].problem.reason}`
+        : `Repo Visibility: Git could not open ${failed.length} repositories (${failed.map((f) => f.repo.name).join(', ')}). ` +
+          'Hover over them in the list to see why.';
+    const actions = [...(unsafe ? ['Manage Unsafe Repositories'] : []), 'Show Log'];
+    const choice = await vscode.window.showWarningMessage(message, ...actions);
+    if (choice === 'Manage Unsafe Repositories') {
+      await vscode.commands.executeCommand('git.manageUnsafeRepositories');
+      await this.refresh();
+    } else if (choice === 'Show Log') {
+      this.log.show(true);
+    }
   }
 
   private async openInGit(root: string): Promise<boolean> {

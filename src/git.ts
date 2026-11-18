@@ -35,7 +35,12 @@ export interface Repository {
 
 export type APIState = 'uninitialized' | 'initialized';
 
+export interface Git {
+  readonly path: string;
+}
+
 export interface API {
+  readonly git: Git;
   readonly state: APIState;
   readonly onDidChangeState: Event<APIState>;
   readonly repositories: Repository[];

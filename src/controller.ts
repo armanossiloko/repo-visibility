@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { DiscoveredRepo, findRepositories, RepoKind } from './discovery';
 import type { API, GitExtension, Repository } from './git';
 import { isRelated, pathKey } from './paths';
 
 const HIDDEN_STATE_KEY = 'repoVisibility.hiddenRepositories';
+const SHOWN_STATE_KEY = 'repoVisibility.shownRepositories';
 
 export type GitState = 'loading' | 'ready' | 'unavailable';
 
@@ -15,6 +17,8 @@ export interface RepoInfo {
   readonly root: string;
   readonly name: string;
   readonly visible: boolean;
+  /** Whether this is a regular repository, a submodule of another repository, or a linked worktree. */
+  readonly kind: RepoKind;
   /** Set while the repository is open (visible). */
   readonly repository: Repository | undefined;
 }
@@ -23,7 +27,9 @@ export interface RepoInfo {
  * Tracks which repositories are hidden and hides or shows them through the built-in Git extension.
  *
  * Hiding a repository closes it in the Git extension, which removes it from the Source Control view;
- * showing it opens it again. The hidden list is stored per workspace, so it survives reloads.
+ * showing it opens it again. Besides the repositories Git has open, the controller lists the ones it
+ * finds on disk in the workspace folders, so repositories Git did not pick up (too deep for Git's scan,
+ * or closed earlier) can be shown too. Both the hidden and the shown choices are stored per workspace.
  */
 export class VisibilityController implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -31,8 +37,12 @@ export class VisibilityController implements vscode.Disposable {
 
   private readonly disposables: vscode.Disposable[] = [this.changeEmitter];
   private readonly apiDisposables: vscode.Disposable[] = [];
-  /** key -> root path */
-  private readonly hidden = new Map<string, string>();
+  /** Repositories the user hid. key -> root path. Persisted. */
+  private readonly hidden: Map<string, string>;
+  /** Repositories the user showed, reopened on start-up if Git does not open them itself. Persisted. */
+  private readonly shown: Map<string, string>;
+  /** Repositories found on disk in the workspace folders, by key. */
+  private discovered = new Map<string, DiscoveredRepo>();
   private api: API | undefined;
   private _state: GitState = 'loading';
   private queue: Promise<unknown> = Promise.resolve();
@@ -41,11 +51,15 @@ export class VisibilityController implements vscode.Disposable {
     private readonly memento: vscode.Memento,
     private readonly log: vscode.LogOutputChannel,
   ) {
-    for (const root of memento.get<string[]>(HIDDEN_STATE_KEY, [])) {
-      this.hidden.set(pathKey(root), root);
-    }
+    this.hidden = this.loadPaths(HIDDEN_STATE_KEY);
+    this.shown = this.loadPaths(SHOWN_STATE_KEY);
     this.disposables.push(
-      vscode.workspace.onDidChangeWorkspaceFolders(() => this.changeEmitter.fire()),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh()),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('repoVisibility.scanDepth') || e.affectsConfiguration('repoVisibility.scanIgnoredFolders')) {
+          void this.refresh();
+        }
+      }),
     );
   }
 
@@ -74,21 +88,40 @@ export class VisibilityController implements vscode.Disposable {
     await this.attach(gitExtension);
   }
 
-  /** All repositories known in this workspace: the open ones plus the hidden ones. */
+  /** Every repository in the workspace: the open ones, the hidden ones and the ones found on disk. */
   getRepositories(): RepoInfo[] {
     const result = new Map<string, RepoInfo>();
-    for (const repository of this.api?.repositories ?? []) {
+    if (!this.api) {
+      return [];
+    }
+    // Submodules Git reports for the open repositories, for repositories the disk scan did not reach.
+    const gitSubmodules = new Set<string>();
+    for (const repository of this.api.repositories) {
+      for (const submodule of repository.state.submodules) {
+        gitSubmodules.add(pathKey(path.join(repository.rootUri.fsPath, submodule.path)));
+      }
+    }
+    const kindOf = (key: string): RepoKind =>
+      this.discovered.get(key)?.kind ?? (gitSubmodules.has(key) ? 'submodule' : 'repository');
+
+    for (const repository of this.api.repositories) {
       const root = repository.rootUri.fsPath;
       const key = pathKey(root);
-      result.set(key, { key, root, name: path.basename(root) || root, visible: true, repository });
+      result.set(key, { key, root, name: path.basename(root) || root, visible: true, kind: kindOf(key), repository });
     }
-    if (this.api) {
-      const folderKeys = (vscode.workspace.workspaceFolders ?? []).map((f) => pathKey(f.uri.fsPath));
-      for (const [key, root] of this.hidden) {
-        // Hidden repositories of folders that left the workspace stay stored, but are not listed.
-        if (!result.has(key) && folderKeys.some((folderKey) => isRelated(key, folderKey))) {
-          result.set(key, { key, root, name: path.basename(root) || root, visible: false, repository: undefined });
-        }
+    const folderKeys = (vscode.workspace.workspaceFolders ?? []).map((f) => pathKey(f.uri.fsPath));
+    const addClosed = (key: string, root: string): void => {
+      if (!result.has(key)) {
+        result.set(key, { key, root, name: path.basename(root) || root, visible: false, kind: kindOf(key), repository: undefined });
+      }
+    };
+    for (const [key, repo] of this.discovered) {
+      addClosed(key, repo.root);
+    }
+    for (const [key, root] of this.hidden) {
+      // Hidden repositories of folders that left the workspace stay stored, but are not listed.
+      if (folderKeys.some((folderKey) => isRelated(key, folderKey))) {
+        addClosed(key, root);
       }
     }
     return [...result.values()];
@@ -96,7 +129,7 @@ export class VisibilityController implements vscode.Disposable {
 
   /** Shows and hides repositories. Operations run one after another, in the order they were requested. */
   setVisibility(show: readonly string[], hide: readonly string[]): Promise<void> {
-    const run = async (): Promise<void> => {
+    return this.enqueue(async () => {
       const repos = new Map(this.getRepositories().map((r) => [r.key, r]));
       for (const key of hide) {
         const repo = repos.get(key);
@@ -111,10 +144,7 @@ export class VisibilityController implements vscode.Disposable {
         }
       }
       this.changeEmitter.fire();
-    };
-    const next = this.queue.then(run, run);
-    this.queue = next.catch(() => undefined);
-    return next;
+    });
   }
 
   /** Shows the given repositories and hides every other one. */
@@ -127,32 +157,63 @@ export class VisibilityController implements vscode.Disposable {
     );
   }
 
-  /** Removes a hidden repository from the list without opening it. */
+  /** Removes a hidden repository from the stored list without opening it. */
   async forget(key: string): Promise<void> {
     if (this.hidden.delete(key)) {
-      await this.saveHidden();
+      await this.save();
       this.changeEmitter.fire();
     }
   }
 
-  /** Drops hidden repositories whose folder no longer exists or is no longer a Git repository. */
-  async refresh(): Promise<void> {
-    let changed = false;
-    for (const [key, root] of [...this.hidden]) {
-      if (!(await isGitRepository(root))) {
-        this.log.info(`Forgetting ${root}: it is no longer a Git repository.`);
-        this.hidden.delete(key);
-        changed = true;
+  /** Searches the workspace folders for repositories again and drops stored ones that no longer exist. */
+  refresh(): Promise<void> {
+    return this.enqueue(async () => {
+      let changed = false;
+      for (const map of [this.hidden, this.shown]) {
+        for (const [key, root] of [...map]) {
+          if (!(await isGitRepository(root))) {
+            this.log.info(`Forgetting ${root}: it is no longer a Git repository.`);
+            map.delete(key);
+            changed = true;
+          }
+        }
       }
-    }
-    if (changed) {
-      await this.saveHidden();
-    }
-    this.changeEmitter.fire();
+      if (changed) {
+        await this.save();
+      }
+      await this.discover();
+      this.changeEmitter.fire();
+    });
   }
 
   dispose(): void {
     vscode.Disposable.from(...this.apiDisposables, ...this.disposables).dispose();
+  }
+
+  private enqueue(task: () => Promise<void>): Promise<void> {
+    const next = this.queue.then(task, task);
+    this.queue = next.catch((error) => this.log.error('Repo Visibility operation failed.', error));
+    return next;
+  }
+
+  private async discover(): Promise<void> {
+    const config = vscode.workspace.getConfiguration('repoVisibility');
+    const maxDepth = Math.max(0, Math.min(20, config.get<number>('scanDepth', 4)));
+    const ignoredFolders = config.get<string[]>('scanIgnoredFolders', []);
+    const folders = (vscode.workspace.workspaceFolders ?? []).filter((f) => f.uri.scheme === 'file').map((f) => f.uri.fsPath);
+
+    const started = Date.now();
+    const { repositories, truncated } = await findRepositories(folders, { maxDepth, ignoredFolders });
+    this.discovered = new Map(repositories.map((repo) => [pathKey(repo.root), repo]));
+    const count = (kind: RepoKind): number => repositories.filter((r) => r.kind === kind).length;
+    this.log.info(
+      `Found ${repositories.length} repositories on disk in ${folders.length} workspace folder(s) ` +
+        `(${count('repository')} repositories, ${count('submodule')} submodules, ${count('worktree')} worktrees; ` +
+        `depth ${maxDepth}, ${Date.now() - started} ms). Git has ${this.api?.repositories.length ?? 0} open.`,
+    );
+    if (truncated) {
+      this.log.warn('Stopped searching after 20000 folders. Lower repoVisibility.scanDepth or add folders to repoVisibility.scanIgnoredFolders.');
+    }
   }
 
   private async attach(gitExtension: GitExtension): Promise<void> {
@@ -189,6 +250,16 @@ export class VisibilityController implements vscode.Disposable {
       }
     }
 
+    // Reopen repositories the user showed that Git does not open by itself (for example ones
+    // deeper than git.repositoryScanMaxDepth).
+    const openKeys = new Set(api.repositories.map((r) => pathKey(r.rootUri.fsPath)));
+    for (const [key, root] of [...this.shown]) {
+      if (!openKeys.has(key) && !this.hidden.has(key) && (await isGitRepository(root))) {
+        this.log.info(`Showing ${root} again after start-up.`);
+        await this.openInGit(root);
+      }
+    }
+
     this.apiDisposables.push(
       api.onDidOpenRepository((repository) => this.onDidOpenRepository(repository)),
       api.onDidCloseRepository((repository) => void this.onDidCloseRepository(repository)),
@@ -201,7 +272,7 @@ export class VisibilityController implements vscode.Disposable {
     // Opened by someone else (for example Git: Reopen Closed Repositories): it is visible now.
     const key = pathKey(repository.rootUri.fsPath);
     if (this.hidden.delete(key)) {
-      void this.saveHidden();
+      void this.save();
     }
     this.changeEmitter.fire();
   }
@@ -214,7 +285,8 @@ export class VisibilityController implements vscode.Disposable {
     // workspace or is no longer a repository.
     if (!this.hidden.has(key) && this.isInWorkspace(key) && (await isGitRepository(root))) {
       this.hidden.set(key, root);
-      await this.saveHidden();
+      this.shown.delete(key);
+      await this.save();
     }
     this.changeEmitter.fire();
   }
@@ -225,10 +297,14 @@ export class VisibilityController implements vscode.Disposable {
     }
     this.log.info(`Hiding ${repo.root}`);
     this.hidden.set(repo.key, repo.root);
-    await this.saveHidden();
+    const wasShown = this.shown.delete(repo.key);
+    await this.save();
     if (!(await this.closeInGit(repo.repository))) {
       this.hidden.delete(repo.key);
-      await this.saveHidden();
+      if (wasShown) {
+        this.shown.set(repo.key, repo.root);
+      }
+      await this.save();
     }
   }
 
@@ -238,28 +314,34 @@ export class VisibilityController implements vscode.Disposable {
     }
     this.log.info(`Showing ${repo.root}`);
     this.hidden.delete(repo.key);
-    await this.saveHidden();
+    this.shown.set(repo.key, repo.root);
+    await this.save();
 
-    let opened: Repository | null = null;
-    try {
-      opened = await this.api.openRepository(vscode.Uri.file(repo.root));
-    } catch (error) {
-      this.log.error(`Could not open ${repo.root}`, error);
-    }
-    if (opened) {
+    if (await this.openInGit(repo.root)) {
       return;
     }
 
+    this.shown.delete(repo.key);
     if (await isGitRepository(repo.root)) {
       this.hidden.set(repo.key, repo.root);
-      await this.saveHidden();
       void vscode.window.showWarningMessage(
         `Repo Visibility: Git could not open ${repo.name}. Check the Git output for details.`,
       );
     } else {
+      this.discovered.delete(repo.key);
       void vscode.window.showInformationMessage(
         `Repo Visibility: ${repo.name} is no longer a Git repository, so it was removed from the list.`,
       );
+    }
+    await this.save();
+  }
+
+  private async openInGit(root: string): Promise<boolean> {
+    try {
+      return !!(await this.api?.openRepository(vscode.Uri.file(root)));
+    } catch (error) {
+      this.log.error(`Could not open ${root}`, error);
+      return false;
     }
   }
 
@@ -279,8 +361,13 @@ export class VisibilityController implements vscode.Disposable {
     return (vscode.workspace.workspaceFolders ?? []).some((f) => isRelated(key, pathKey(f.uri.fsPath)));
   }
 
-  private saveHidden(): Thenable<void> {
-    return this.memento.update(HIDDEN_STATE_KEY, [...this.hidden.values()]);
+  private loadPaths(stateKey: string): Map<string, string> {
+    return new Map(this.memento.get<string[]>(stateKey, []).map((root) => [pathKey(root), root]));
+  }
+
+  private async save(): Promise<void> {
+    await this.memento.update(HIDDEN_STATE_KEY, [...this.hidden.values()]);
+    await this.memento.update(SHOWN_STATE_KEY, [...this.shown.values()]);
   }
 
   private setState(state: GitState): void {

@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -8,6 +7,18 @@ import { buildForest, ForestNode, pathKey, tildify } from './paths';
 export type ViewMode = 'tree' | 'list';
 
 export type RepoNode = ForestNode<RepoInfo>;
+
+const KIND_ICONS: Record<RepoInfo['kind'], string> = {
+  repository: 'repo',
+  submodule: 'file-submodule',
+  worktree: 'worktree',
+};
+
+const KIND_LABELS: Record<RepoInfo['kind'], string> = {
+  repository: 'Repository',
+  submodule: 'Submodule',
+  worktree: 'Worktree',
+};
 
 const compareRepos = (a: RepoInfo, b: RepoInfo): number =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) || a.key.localeCompare(b.key);
@@ -72,10 +83,10 @@ export class RepoTreeProvider implements vscode.TreeDataProvider<RepoNode>, vsco
     item.description = this.describe(node);
     item.checkboxState = {
       state: repo.visible ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked,
-      tooltip: repo.visible ? 'Shown in Source Control. Uncheck to hide.' : 'Hidden from Source Control. Check to show.',
+      tooltip: repo.visible ? 'Shown in Source Control. Uncheck to hide.' : 'Not shown in Source Control. Check to show.',
     };
     item.contextValue = repo.visible ? 'repoVisibility.visible' : 'repoVisibility.hidden';
-    item.iconPath = new vscode.ThemeIcon(this.isSubmodule(node) ? 'file-submodule' : 'repo');
+    item.iconPath = new vscode.ThemeIcon(KIND_ICONS[repo.kind]);
     item.tooltip = this.tooltip(repo);
     return item;
   }
@@ -113,25 +124,9 @@ export class RepoTreeProvider implements vscode.TreeDataProvider<RepoNode>, vsco
     return tildify(path.dirname(repo.root), os.homedir());
   }
 
-  private isSubmodule(node: RepoNode): boolean {
-    if (!node.parent) {
-      return false;
-    }
-    const parent = node.parent.item.repository;
-    if (parent) {
-      return parent.state.submodules.some((s) => pathKey(path.join(parent.rootUri.fsPath, s.path)) === node.item.key);
-    }
-    // The parent is hidden, so Git can't tell us. A nested `.git` file (not folder) means a submodule.
-    try {
-      return fs.statSync(path.join(node.item.root, '.git')).isFile();
-    } catch {
-      return false;
-    }
-  }
-
   private tooltip(repo: RepoInfo): vscode.MarkdownString {
     const md = new vscode.MarkdownString(undefined, true);
-    md.appendMarkdown(`**${escapeMarkdown(repo.name)}**\n\n`);
+    md.appendMarkdown(`**${escapeMarkdown(repo.name)}** · ${KIND_LABELS[repo.kind]}\n\n`);
     md.appendMarkdown(`${escapeMarkdown(repo.root)}\n\n`);
     if (repo.repository) {
       const state = repo.repository.state;
@@ -147,7 +142,7 @@ export class RepoTreeProvider implements vscode.TreeDataProvider<RepoNode>, vsco
       md.appendMarkdown(`${changes} ${changes === 1 ? 'change' : 'changes'}  \n`);
       md.appendMarkdown('$(eye) Shown in Source Control');
     } else {
-      md.appendMarkdown('$(eye-closed) Hidden from Source Control');
+      md.appendMarkdown('$(eye-closed) Not shown in Source Control');
     }
     return md;
   }

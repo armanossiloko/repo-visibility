@@ -252,6 +252,32 @@
           ],
           "default": "tree",
           "description": "How the Repo Visibility view lays out repositories."
+        },
+        "repoVisibility.scanDepth": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 20,
+          "markdownDescription": "How many folder levels below each workspace folder to search for Git repositories, including ones the Git extension has not opened (for example because they are deeper than `#git.repositoryScanMaxDepth#`, or were closed earlier). Submodules listed in a repository's `.gitmodules` are always found. `0` checks only the workspace folders themselves."
+        },
+        "repoVisibility.scanIgnoredFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "node_modules",
+            "bin",
+            "obj",
+            "dist",
+            "build",
+            "out",
+            "target",
+            "vendor",
+            "venv",
+            "__pycache__"
+          ],
+          "markdownDescription": "Folder names that are not searched for repositories (case-insensitive). Folders whose name starts with `.` are always skipped."
         }
       }
     }

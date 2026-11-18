@@ -2,7 +2,7 @@
   "name": "repo-visibility",
   "displayName": "Repo Visibility",
   "description": "Hide and show Git repositories in the Source Control view with one click. Made for workspaces with many repositories and submodules.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "armanossiloko",
   "author": {
     "name": "armanossiloko"

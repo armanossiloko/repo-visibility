@@ -3,6 +3,22 @@
 All notable changes to Repo Visibility are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-18
+
+### Added
+
+- The workspace folders are scanned on disk for repositories, so the list contains every repository in the
+  workspace, including ones the Git extension never opened (deeper than `git.repositoryScanMaxDepth`, or closed in an
+  earlier session). Check one to add it to Source Control.
+- Submodules are recognized from `.gitmodules` (at any depth) and from the `.git` file, and shown with a submodule
+  icon. Linked worktrees are recognized too.
+- Repositories you show are reopened after a reload even if Git would not open them by itself.
+- Settings `repoVisibility.scanDepth` and `repoVisibility.scanIgnoredFolders`.
+
+### Fixed
+
+- Only the repositories the Git extension happened to have open were listed.
+
 ## [0.1.0] - 2026-11-18
 
 ### Added
@@ -14,4 +30,5 @@ All notable changes to Repo Visibility are documented here. The format follows
 - Hidden repositories are remembered per workspace and stay hidden after a reload.
 - Repositories closed with Git's own Close Repository action are listed as hidden.
 
+[0.2.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.2.0
 [0.1.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.1.0

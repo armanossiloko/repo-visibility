@@ -9,10 +9,11 @@ When a workspace contains many repositories (multi-root workspaces, monorepos wi
 ## Features
 
 - **One checkbox per repository.** Unchecked repositories disappear from Source Control; checked ones come back.
-- **Submodules and nested repositories are grouped** under the repository that contains them, or switch to a flat list sorted by name.
+- **Finds every repository in the workspace.** The workspace folders are scanned on disk, so the list also contains repositories the Git extension never opened: ones deeper than `git.repositoryScanMaxDepth`, or ones closed in an earlier session. Check one to add it to Source Control.
+- **Knows submodules from repositories.** Submodules are read from each repository's `.gitmodules` (at any depth) and shown with a submodule icon under the repository that contains them. Linked worktrees get their own icon too. Switch to a flat list sorted by name if you prefer.
 - **Bulk actions** in the panel's title bar: show all, hide all, and *Choose Visible Repositories...*, a multi-select picker that is also in the Source Control view's `...` menu and the Command Palette.
 - **Show only this repository**, plus Show / Hide / Reveal in File Explorer, from the right-click menu. Select several rows to act on all of them at once.
-- **Remembered per workspace.** Hidden repositories stay hidden after a reload or restart.
+- **Remembered per workspace.** Hidden repositories stay hidden after a reload or restart, and repositories you showed come back even if Git would not have opened them on its own.
 - **Works with Git's own Close Repository.** A repository you close from the Source Control view shows up unchecked in the panel, so you can bring it back with one click.
 - The panel title shows how many repositories are visible, for example `3 of 12 shown`, whenever some are hidden.
 
@@ -42,6 +43,8 @@ When a workspace contains many repositories (multi-root workspaces, monorepos wi
 | Setting | Default | Description |
 | --- | --- | --- |
 | `repoVisibility.viewMode` | `tree` | `tree` nests submodules and nested repositories under their parent; `list` shows every repository on its own row. |
+| `repoVisibility.scanDepth` | `4` | How many folder levels below each workspace folder are searched for repositories. Submodules in `.gitmodules` are always found. `0` searches only the workspace folders themselves. |
+| `repoVisibility.scanIgnoredFolders` | `node_modules`, `bin`, `obj`, ... | Folder names that are not searched. Folders starting with `.` are always skipped. |
 
 ## How it works
 
@@ -49,13 +52,14 @@ VS Code has no API for filtering the Source Control view, so Repo Visibility use
 
 - A hidden repository is not watched by Git, so it gets no Git decorations in the Explorer and no status bar branch while it is hidden. Show it again whenever you need them.
 - Your files are never touched. Hiding and showing only changes what Git tracks in the current window.
-- The list of hidden repositories is stored in the workspace's state, so each workspace has its own.
+- Repositories found on disk that Git has not opened are listed unchecked; checking one opens it in Git.
+- The hidden and shown choices are stored in the workspace's state, so each workspace has its own.
 
 ## Requirements
 
 - VS Code 1.80 or later, or a compatible editor such as VSCodium.
 - The built-in Git extension must be enabled (`git.enabled`).
-- Repo Visibility lists the repositories that Git finds. If a repository is missing, raise `git.repositoryScanMaxDepth`, or check `git.autoRepositoryDetection` and `git.detectSubmodules`.
+- If a repository is missing from the list, raise `repoVisibility.scanDepth` and press Refresh. The *Repo Visibility* output channel logs how many repositories and submodules the scan found.
 
 ## Feedback
 

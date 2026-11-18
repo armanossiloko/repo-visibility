@@ -49,15 +49,25 @@ listed: ${JSON.stringify(listed())}`;
     console.log(`ok - ${label}`);
   };
 
-  const all = (visible: boolean) => Object.fromEntries(NAMES.map((n) => [n, visible]));
+  // `broken` is always listed and never opens.
+  const all = (visible: boolean) => ({ ...Object.fromEntries(NAMES.map((n) => [n, visible])), broken: false });
 
   await waitFor('Git opens its repositories', () => openNames().join() === [...GIT_OPENS].sort().join());
   await step('the disk scan lists the repository Git did not open', () => vscode.commands.executeCommand('repoVisibility.refresh'),
     GIT_OPENS, { ...all(true), deep: false });
 
   const kinds = Object.fromEntries(api.getRepositories().map((r) => [path.basename(r.root), r.kind]));
-  assert.deepEqual(sortKeys(kinds), sortKeys({ ...Object.fromEntries(NAMES.map((n) => [n, 'repository'])), core: 'submodule' }));
+  assert.deepEqual(
+    sortKeys(kinds),
+    sortKeys({ ...Object.fromEntries(NAMES.map((n) => [n, 'repository'])), core: 'submodule', broken: 'repository' }),
+  );
   console.log('ok - submodules are recognized');
+
+  await vscode.commands.executeCommand('repoVisibility.show', node('broken'));
+  const broken = api.getRepositories().find((r) => path.basename(r.root) === 'broken')!;
+  assert.equal(broken.visible, false);
+  assert.match(broken.problem ?? '', /rev-parse failed: fatal: /, `problem was: ${broken.problem}`);
+  console.log(`ok - a repository Git cannot open says why: ${broken.problem}`);
 
   await step('show the repository Git did not open', () => vscode.commands.executeCommand('repoVisibility.show', node('deep')),
     NAMES, all(true));

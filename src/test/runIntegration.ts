@@ -38,6 +38,9 @@ async function main(): Promise<void> {
   }
   git(path.join(workspace, 'alpha'), 'submodule', 'add', '-q', coreSource, 'libs/core');
   git(path.join(workspace, 'alpha'), 'commit', '-q', '-m', 'add core');
+  // A folder whose .git file points nowhere: listed, but Git cannot open it.
+  fs.mkdirSync(path.join(workspace, 'broken'));
+  fs.writeFileSync(path.join(workspace, 'broken', '.git'), 'gitdir: ../nowhere/.git\n');
 
   fs.mkdirSync(path.join(workspace, '.vscode'));
   fs.writeFileSync(

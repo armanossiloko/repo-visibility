@@ -3,6 +3,16 @@
 All notable changes to Repo Visibility are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-18
+
+### Changed
+
+- When Git refuses to open a repository, the list now says why: the repository gets a warning icon and its tooltip
+  shows the reason (dubious ownership / `safe.directory`, `git.ignoredRepositories`, `git.enabled` turned off, an
+  untrusted workspace, or the error from `git rev-parse`, such as a submodule whose `.git` file points nowhere).
+- Failures are reported in one notification instead of one per repository. When ownership is the problem it offers
+  *Manage Unsafe Repositories*.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added
@@ -30,5 +40,6 @@ All notable changes to Repo Visibility are documented here. The format follows
 - Hidden repositories are remembered per workspace and stay hidden after a reload.
 - Repositories closed with Git's own Close Repository action are listed as hidden.
 
+[0.3.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.3.0
 [0.2.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.2.0
 [0.1.0]: https://github.com/armanossiloko/repo-visibility/releases/tag/v0.1.0

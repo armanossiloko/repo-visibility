@@ -14,6 +14,7 @@ When a workspace contains many repositories (multi-root workspaces, monorepos wi
 - **Bulk actions** in the panel's title bar: show all, hide all, and *Choose Visible Repositories...*, a multi-select picker that is also in the Source Control view's `...` menu and the Command Palette.
 - **Show only this repository**, plus Show / Hide / Reveal in File Explorer, from the right-click menu. Select several rows to act on all of them at once.
 - **Remembered per workspace.** Hidden repositories stay hidden after a reload or restart, and repositories you showed come back even if Git would not have opened them on its own.
+- **Says why a repository won't open.** If Git refuses one (for example because of "dubious ownership", or a submodule whose `.git` file points nowhere), it gets a warning icon and the tooltip shows the reason.
 - **Works with Git's own Close Repository.** A repository you close from the Source Control view shows up unchecked in the panel, so you can bring it back with one click.
 - The panel title shows how many repositories are visible, for example `3 of 12 shown`, whenever some are hidden.
 

@@ -8,7 +8,10 @@ import type { GitExtension, API } from '../../git';
 import type { ExtensionApi } from '../../extension';
 import { pathKey } from '../../paths';
 
-const NAMES = ['alpha', 'beta', 'gamma', 'inner'];
+/** Opened by Git itself. */
+const GIT_OPENS = ['alpha', 'beta', 'core', 'gamma', 'inner'];
+/** Everything in the workspace, including `deep`, which only the extension's disk scan finds. */
+const NAMES = [...GIT_OPENS, 'deep'];
 
 let describeState: () => string = () => '';
 
@@ -48,11 +51,19 @@ listed: ${JSON.stringify(listed())}`;
 
   const all = (visible: boolean) => Object.fromEntries(NAMES.map((n) => [n, visible]));
 
-  await waitFor('Git finds all four repositories', () => openNames().join() === [...NAMES].sort().join());
-  await waitFor('Repo Visibility lists all four', () => api.getRepositories().length === 4);
+  await waitFor('Git opens its repositories', () => openNames().join() === [...GIT_OPENS].sort().join());
+  await step('the disk scan lists the repository Git did not open', () => vscode.commands.executeCommand('repoVisibility.refresh'),
+    GIT_OPENS, { ...all(true), deep: false });
+
+  const kinds = Object.fromEntries(api.getRepositories().map((r) => [path.basename(r.root), r.kind]));
+  assert.deepEqual(sortKeys(kinds), sortKeys({ ...Object.fromEntries(NAMES.map((n) => [n, 'repository'])), core: 'submodule' }));
+  console.log('ok - submodules are recognized');
+
+  await step('show the repository Git did not open', () => vscode.commands.executeCommand('repoVisibility.show', node('deep')),
+    NAMES, all(true));
 
   await step('hide one', () => vscode.commands.executeCommand('repoVisibility.hide', node('beta')),
-    ['alpha', 'gamma', 'inner'], { ...all(true), beta: false });
+    NAMES.filter((n) => n !== 'beta'), { ...all(true), beta: false });
 
   await step('show only one', () => vscode.commands.executeCommand('repoVisibility.showOnly', node('gamma')),
     ['gamma'], { ...all(false), gamma: true });
@@ -61,7 +72,7 @@ listed: ${JSON.stringify(listed())}`;
 
   const gammaUri = git.repositories.find((r) => path.basename(r.rootUri.fsPath) === 'gamma')!.rootUri;
   await step('closing through Git keeps it listed as hidden', () => vscode.commands.executeCommand('git.close', gammaUri),
-    ['alpha', 'beta', 'inner'], { ...all(true), gamma: false });
+    NAMES.filter((n) => n !== 'gamma'), { ...all(true), gamma: false });
 
   await step('show the one Git closed', () => vscode.commands.executeCommand('repoVisibility.show', node('gamma')),
     NAMES, all(true));
@@ -69,12 +80,12 @@ listed: ${JSON.stringify(listed())}`;
   await step('hide all', () => vscode.commands.executeCommand('repoVisibility.hideAll'), [], all(false));
 
   await step('show several at once', () =>
-    vscode.commands.executeCommand('repoVisibility.show', node('alpha'), [node('alpha'), node('inner')]),
-    ['alpha', 'inner'], { ...all(false), alpha: true, inner: true });
+    vscode.commands.executeCommand('repoVisibility.show', node('gamma'), [node('gamma'), node('inner')]),
+    ['gamma', 'inner'], { ...all(false), gamma: true, inner: true });
 
   await step('show all again', () => vscode.commands.executeCommand('repoVisibility.showAll'), NAMES, all(true));
 }
 
-function sortKeys(record: Record<string, boolean>): Record<string, boolean> {
+function sortKeys<T>(record: Record<string, T>): Record<string, T> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
 }

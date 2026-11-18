@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { diagnoseOpenFailure, OpenProblem } from './diagnose';
 import { DiscoveredRepo, findRepositories, RepoKind } from './discovery';
+import { ignoredRepositoryPaths, unignoreRepository } from './ignored';
 import type { API, GitExtension, Repository } from './git';
 import { isRelated, pathKey } from './paths';
 
@@ -61,7 +62,11 @@ export class VisibilityController implements vscode.Disposable {
     this.disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh()),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('repoVisibility.scanDepth') || e.affectsConfiguration('repoVisibility.scanIgnoredFolders')) {
+        if (
+          e.affectsConfiguration('repoVisibility.scanDepth') ||
+          e.affectsConfiguration('repoVisibility.scanIgnoredFolders') ||
+          e.affectsConfiguration('git.ignoredRepositories')
+        ) {
           void this.refresh();
         }
       }),
@@ -151,16 +156,26 @@ export class VisibilityController implements vscode.Disposable {
         }
       }
       const failed: { repo: RepoInfo; problem: OpenProblem }[] = [];
+      const unignored: string[] = [];
       for (const key of show) {
         const repo = repos.get(key);
         if (repo && !repo.visible) {
-          const problem = await this.showRepository(repo);
+          const { problem, unignoredFrom } = await this.showRepository(repo);
           if (problem) {
             failed.push({ repo, problem });
+          }
+          if (unignoredFrom.length > 0) {
+            unignored.push(repo.name);
           }
         }
       }
       this.changeEmitter.fire();
+      if (unignored.length > 0) {
+        void vscode.window.showInformationMessage(
+          `Repo Visibility: removed ${unignored.length === 1 ? unignored[0] : `${unignored.length} repositories`} from ` +
+            'git.ignoredRepositories so Git can show them in Source Control.',
+        );
+      }
       if (failed.length > 0) {
         void this.reportFailures(failed);
       }
@@ -225,6 +240,13 @@ export class VisibilityController implements vscode.Disposable {
     const started = Date.now();
     const { repositories, truncated } = await findRepositories(folders, { maxDepth, ignoredFolders });
     this.discovered = new Map(repositories.map((repo) => [pathKey(repo.root), repo]));
+    // Repositories in git.ignoredRepositories are listed (unchecked) even when the scan does not reach them.
+    for (const root of ignoredRepositoryPaths()) {
+      const key = pathKey(root);
+      if (!this.discovered.has(key) && (await isGitRepository(root))) {
+        this.discovered.set(key, { root, kind: 'repository' });
+      }
+    }
     const count = (kind: RepoKind): number => repositories.filter((r) => r.kind === kind).length;
     this.log.info(
       `Found ${repositories.length} repositories on disk in ${folders.length} workspace folder(s) ` +
@@ -333,26 +355,39 @@ export class VisibilityController implements vscode.Disposable {
     }
   }
 
-  /** Opens a repository in Git. Returns why it could not be opened, or undefined when it was. */
-  private async showRepository(repo: RepoInfo): Promise<OpenProblem | undefined> {
+  /**
+   * Opens a repository in Git, first taking it out of git.ignoredRepositories if it is listed there.
+   * Returns why it could not be opened (undefined when it was) and which settings were changed.
+   */
+  private async showRepository(repo: RepoInfo): Promise<{ problem: OpenProblem | undefined; unignoredFrom: string[] }> {
     if (!this.api) {
-      return undefined;
+      return { problem: undefined, unignoredFrom: [] };
     }
     this.log.info(`Showing ${repo.root}`);
     const wasHidden = this.hidden.delete(repo.key);
     this.shown.set(repo.key, repo.root);
     await this.save();
 
+    let unignoredFrom: string[] = [];
+    try {
+      unignoredFrom = await unignoreRepository(repo.root);
+      if (unignoredFrom.length > 0) {
+        this.log.info(`Removed ${repo.root} from git.ignoredRepositories in ${unignoredFrom.join(' and ')}.`);
+      }
+    } catch (error) {
+      this.log.error(`Could not update git.ignoredRepositories for ${repo.root}`, error);
+    }
+
     if (await this.openInGit(repo.root)) {
       this.problems.delete(repo.key);
-      return undefined;
+      return { problem: undefined, unignoredFrom };
     }
 
     this.shown.delete(repo.key);
     if (!(await isGitRepository(repo.root))) {
       this.discovered.delete(repo.key);
       await this.save();
-      return { reason: 'It is no longer a Git repository, so it was removed from the list.', unsafe: false };
+      return { problem: { reason: 'It is no longer a Git repository, so it was removed from the list.', unsafe: false }, unignoredFrom };
     }
     // Keep listing it: the disk scan lists it anyway, otherwise it goes back to the hidden list.
     if (wasHidden || !this.discovered.has(repo.key)) {
@@ -362,7 +397,7 @@ export class VisibilityController implements vscode.Disposable {
     const problem = await diagnoseOpenFailure(repo.root, this.api.git?.path);
     this.problems.set(repo.key, problem);
     this.log.warn(`Git could not open ${repo.root}: ${problem.reason}`);
-    return problem;
+    return { problem, unignoredFrom };
   }
 
   private async reportFailures(failed: { repo: RepoInfo; problem: OpenProblem }[]): Promise<void> {

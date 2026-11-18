@@ -26,7 +26,7 @@ export async function diagnoseOpenFailure(root: string, gitPath: string | undefi
   for (const entry of config.get<string[]>('ignoredRepositories', [])) {
     const candidates = path.isAbsolute(entry) ? [entry] : folders.map((folder) => path.join(folder, entry));
     if (candidates.some((candidate) => pathKey(candidate) === key)) {
-      return problem(`It is listed in git.ignoredRepositories ("${entry}").`);
+      return problem(`It is listed in git.ignoredRepositories ("${entry}"). Remove it from that setting to show it.`);
     }
   }
   if (!vscode.workspace.isTrusted) {
